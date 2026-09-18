@@ -73,7 +73,8 @@ All settings are unified and managed through `app/config.py`:
 ### Setup Instructions
 ```bash
 # 1. Clone repository and navigate to workspace root
-cd C:\Users\Rushan\Desktop\OS
+git clone <repository_url>
+cd gridwise
 
 # 2. Create and activate a clean virtual environment
 python -m venv venv
