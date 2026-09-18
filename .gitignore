@@ -68,7 +68,11 @@ a.txt.txt
 
 # Generated test data
 100_hidden_cases.json
-
+INTEGRATION_NOTES_API.md
+INTEGRATION_NOTES_LLM.md
+INTEGRATION_NOTES_OPTIMIZER.md
+public_cases.json
+VIDEO_SCRIPT.md
 # Ignore documents and data files except README
 *.pdf
 *.json
