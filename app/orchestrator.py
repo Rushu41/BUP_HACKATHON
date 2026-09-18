@@ -10,6 +10,9 @@ from app.exceptions import (
     PlanValidationError,
     ProviderError,
 )
+from app.guardrails import validate_interpretations
+from app.llm_interpreter import interpret_operator_notes
+from app.optimizer import optimize_energy
 from app.schemas import (
     DirectiveInterpretation,
     DirectiveType,
@@ -17,63 +20,7 @@ from app.schemas import (
     OptimizeEnergyRequest,
     OptimizeEnergyResponse,
 )
-
-# Inter-module contracts: dynamic import with explicit fallbacks when modules are not yet merged.
-try:
-    from app.llm_interpreter import interpret_operator_notes
-except ImportError:
-
-    async def interpret_operator_notes(
-        operator_notes: list[str],
-        battery: Any,
-        hours: Any,
-    ) -> list[dict[str, Any]]:
-        raise NotImplementedError(
-            "app.llm_interpreter.interpret_operator_notes has not been merged yet."
-        )
-
-
-try:
-    from app.guardrails import validate_interpretations
-except ImportError:
-
-    def validate_interpretations(
-        interpretations: list[dict[str, Any]],
-        operator_notes: list[str],
-        battery: Any,
-    ) -> list[dict[str, Any]]:
-        raise NotImplementedError(
-            "app.guardrails.validate_interpretations has not been merged yet."
-        )
-
-
-try:
-    from app.optimizer import optimize_energy
-except ImportError:
-
-    def optimize_energy(
-        hours: Any,
-        battery: Any,
-        directives: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        raise NotImplementedError(
-            "app.optimizer.optimize_energy has not been merged yet."
-        )
-
-
-try:
-    from app.validator import validate_hourly_plan
-except ImportError:
-
-    def validate_hourly_plan(
-        hours: Any,
-        battery: Any,
-        directives: list[dict[str, Any]],
-        hourly_plan: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        raise NotImplementedError(
-            "app.validator.validate_hourly_plan has not been merged yet."
-        )
+from app.validator import validate_hourly_plan
 
 
 def generate_plan_summary(directives: list[Any]) -> str:

@@ -114,13 +114,13 @@ def test_solar_reduction_factor_is_remaining():
 
 
 def test_solar_reduction_multiple_rules_same_hour():
-    """Overlapping solar reduction factors are multiplied."""
+    """Overlapping solar reduction factors use minimum active factor."""
     hours = make_hours(solar=100.0)
     d1 = directive("solar_reduction", {"hours": [5], "factor": 0.5}, idx=0)
-    d2 = directive("solar_reduction", {"hours": [5], "factor": 0.5}, idx=1)
+    d2 = directive("solar_reduction", {"hours": [5], "factor": 0.3}, idx=1)
     result = apply_directives(hours, make_battery(), [d1, d2])
-    # 100 * 0.5 * 0.5 = 25
-    assert abs(result.effective_solar[5] - 25.0) < 1e-9
+    # min(0.5, 0.3) * 100 = 30.0
+    assert abs(result.effective_solar[5] - 30.0) < 1e-9
 
 
 # ---------------------------------------------------------------------------

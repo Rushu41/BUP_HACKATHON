@@ -2,16 +2,21 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Expose the configurable port (default 8000 for FastAPI)
-EXPOSE 8000
+# Install CBC solver and clean package caches
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends coinor-cbc && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install dependencies (do not copy .env or bake in secrets)
-# We expect a requirements.txt from the combined integration, but for now we install what LLM uses.
+# Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy application source code (excluding items in .dockerignore)
 COPY . .
 
-# Startup command matches final FastAPI app. Assuming Developer 1 will create `app.main` with a FastAPI `app`
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default application port
+ENV PORT=8000
+EXPOSE 8000
+
+# Start FastAPI service on 0.0.0.0 with configurable PORT
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

@@ -41,7 +41,7 @@ def _validate_hour_list(hours: list[int]) -> list[int]:
         raise ValueError("hours array cannot be empty for an active directive window")
     for h in hours:
         if not isinstance(h, int) or isinstance(h, bool):
-            raise ValueError(f"hour {h} must be an integer")
+            raise ValueError(f"hour {h} must be an integer (booleans not allowed)")
         if h < 0 or h > 23:
             raise ValueError(f"hour {h} must be between 0 and 23")
     if len(hours) != len(set(hours)):
@@ -57,10 +57,19 @@ class SolarReductionAdjustment(BaseModel):
     hours: list[int]
     factor: float = Field(ge=0.0, le=1.0, allow_inf_nan=False)
 
-    @field_validator("hours")
+    @field_validator("hours", mode="before")
     @classmethod
-    def check_hours(cls, v: list[int]) -> list[int]:
+    def check_hours(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            raise ValueError("hours must be a list")
         return _validate_hour_list(v)
+
+    @field_validator("factor", mode="before")
+    @classmethod
+    def check_factor_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("factor cannot be a boolean")
+        return v
 
 
 class MinimumBatteryReserveAdjustment(BaseModel):
@@ -71,10 +80,19 @@ class MinimumBatteryReserveAdjustment(BaseModel):
     hours: list[int]
     minimum_energy_kwh: float = Field(ge=0.0, allow_inf_nan=False)
 
-    @field_validator("hours")
+    @field_validator("hours", mode="before")
     @classmethod
-    def check_hours(cls, v: list[int]) -> list[int]:
+    def check_hours(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            raise ValueError("hours must be a list")
         return _validate_hour_list(v)
+
+    @field_validator("minimum_energy_kwh", mode="before")
+    @classmethod
+    def check_min_energy_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("minimum_energy_kwh cannot be a boolean")
+        return v
 
 
 class WindowAdjustment(BaseModel):
@@ -84,9 +102,11 @@ class WindowAdjustment(BaseModel):
 
     hours: list[int]
 
-    @field_validator("hours")
+    @field_validator("hours", mode="before")
     @classmethod
-    def check_hours(cls, v: list[int]) -> list[int]:
+    def check_hours(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            raise ValueError("hours must be a list")
         return _validate_hour_list(v)
 
 
@@ -98,10 +118,19 @@ class MaxGridWindowAdjustment(BaseModel):
     hours: list[int]
     max_grid_kwh: float = Field(ge=0.0, allow_inf_nan=False)
 
-    @field_validator("hours")
+    @field_validator("hours", mode="before")
     @classmethod
-    def check_hours(cls, v: list[int]) -> list[int]:
+    def check_hours(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            raise ValueError("hours must be a list")
         return _validate_hour_list(v)
+
+    @field_validator("max_grid_kwh", mode="before")
+    @classmethod
+    def check_max_grid_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("max_grid_kwh cannot be a boolean")
+        return v
 
 
 StructuredAdjustmentType = Union[
@@ -124,6 +153,20 @@ class DirectiveInterpretation(BaseModel):
     directive_type: DirectiveType
     structured_adjustment: StructuredAdjustmentType = None
     explanation: str = Field(min_length=1)
+
+    @field_validator("note_index", mode="before")
+    @classmethod
+    def check_note_index_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("note_index cannot be a boolean")
+        return v
+
+    @field_validator("applies", mode="before")
+    @classmethod
+    def check_applies_is_bool(cls, v: Any) -> Any:
+        if not isinstance(v, bool):
+            raise ValueError("applies must be a boolean")
+        return v
 
     @model_validator(mode="after")
     def validate_directive_integrity(self) -> Self:
@@ -149,19 +192,19 @@ class DirectiveInterpretation(BaseModel):
                 if self.directive_type == DirectiveType.SOLAR_REDUCTION:
                     factor = adj.get("factor")
                     if factor is None or not isinstance(factor, (int, float)) or isinstance(factor, bool):
-                        raise ValueError("solar_reduction requires numeric 'factor'")
+                        raise ValueError("solar_reduction requires numeric 'factor' (boolean not allowed)")
                     if not math.isfinite(factor) or factor < 0.0 or factor > 1.0:
                         raise ValueError("solar_reduction factor must be a finite float between 0.0 and 1.0")
                 elif self.directive_type == DirectiveType.MINIMUM_BATTERY_RESERVE:
                     val = adj.get("minimum_energy_kwh")
                     if val is None or not isinstance(val, (int, float)) or isinstance(val, bool):
-                        raise ValueError("minimum_battery_reserve requires numeric 'minimum_energy_kwh'")
+                        raise ValueError("minimum_battery_reserve requires numeric 'minimum_energy_kwh' (boolean not allowed)")
                     if not math.isfinite(val) or val < 0.0:
                         raise ValueError("minimum_battery_reserve must be a finite non-negative float")
                 elif self.directive_type == DirectiveType.MAX_GRID_WINDOW:
                     val = adj.get("max_grid_kwh")
                     if val is None or not isinstance(val, (int, float)) or isinstance(val, bool):
-                        raise ValueError("max_grid_window requires numeric 'max_grid_kwh'")
+                        raise ValueError("max_grid_window requires numeric 'max_grid_kwh' (boolean not allowed)")
                     if not math.isfinite(val) or val < 0.0:
                         raise ValueError("max_grid_kwh must be a finite non-negative float")
         return self
@@ -176,6 +219,13 @@ class HourInput(BaseModel):
     demand_kwh: float = Field(ge=0.0, allow_inf_nan=False, description="Energy demand in kWh")
     solar_kwh: float = Field(ge=0.0, allow_inf_nan=False, description="Solar PV forecast in kWh")
     tariff_bdt_per_kwh: float = Field(ge=0.0, allow_inf_nan=False, description="Grid tariff rate in BDT/kWh")
+
+    @field_validator("hour", "demand_kwh", "solar_kwh", "tariff_bdt_per_kwh", mode="before")
+    @classmethod
+    def check_numeric_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("HourInput numeric fields cannot be boolean")
+        return v
 
     def __getitem__(self, item: str) -> Any:
         try:
@@ -197,6 +247,20 @@ class BatteryInput(BaseModel):
     minimum_energy_kwh: float = Field(ge=0.0, allow_inf_nan=False, description="Base minimum energy reserve in kWh")
     max_charge_kwh_per_hour: float = Field(ge=0.0, allow_inf_nan=False, description="Max charge rate in kWh/hour")
     max_discharge_kwh_per_hour: float = Field(ge=0.0, allow_inf_nan=False, description="Max discharge rate in kWh/hour")
+
+    @field_validator(
+        "capacity_kwh",
+        "initial_energy_kwh",
+        "minimum_energy_kwh",
+        "max_charge_kwh_per_hour",
+        "max_discharge_kwh_per_hour",
+        mode="before",
+    )
+    @classmethod
+    def check_battery_numeric_not_bool(cls, v: Any) -> Any:
+        if isinstance(v, bool):
+            raise ValueError("BatteryInput numeric fields cannot be boolean")
+        return v
 
     @model_validator(mode="after")
     def check_battery_constraints(self) -> Self:

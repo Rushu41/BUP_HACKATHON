@@ -1,48 +1,191 @@
-import json
+"""Standalone public sample case test runner for GridWise.
+
+Executes all 10 official public cases through the complete application pipeline:
+Request validation -> LLM interpretation -> Guardrails -> Optimizer -> Validator -> Recalculated totals.
+
+Supports:
+- Live LLM execution if LLM_API_KEY (or GEMINI_API_KEY) is configured.
+- Deterministic mock mode (default if no key is present or when --mock is passed).
+"""
+
+import argparse
 import asyncio
-import sys
+import json
 import os
-from app.llm_interpreter import interpret_operator_notes
+import sys
+from unittest.mock import patch
+
+# Ensure workspace root is in sys.path
+WORKSPACE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if WORKSPACE_DIR not in sys.path:
+    sys.path.insert(0, WORKSPACE_DIR)
+
+from app.config import settings
+from app.orchestrator import process_scenario
+from app.schemas import OptimizeEnergyRequest
+from app.validator import validate_hourly_plan
+
+
+def load_official_cases() -> list[dict]:
+    """Loads official sample cases from BUP sample pack or public_cases.json."""
+    pack_path = os.path.join(
+        WORKSPACE_DIR, "BUP_CSE_FEST_2026_Preli_Public_Sample_Cases.json"
+    )
+    if os.path.exists(pack_path):
+        with open(pack_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data["cases"]
+
+    fallback_path = os.path.join(WORKSPACE_DIR, "public_cases.json")
+    if os.path.exists(fallback_path):
+        with open(fallback_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data["cases"] if isinstance(data, dict) and "cases" in data else data
+
+    raise FileNotFoundError("Could not find official public sample cases JSON pack.")
+
+
+async def run_single_case(case: dict, use_mock: bool = False) -> tuple[bool, str]:
+    """Runs a single sample case through the end-to-end pipeline and checks validity and cost."""
+    case_id = case.get("id", case.get("input", {}).get("scenario_id", "UNKNOWN"))
+    case_input = case["input"] if "input" in case else case
+    expected_output = case.get("expected_output", {})
+    expected_directives = expected_output.get(
+        "directive_interpretation", case.get("expected_directives", [])
+    )
+
+    try:
+        request = OptimizeEnergyRequest(**case_input)
+    except Exception as e:
+        return False, f"[{case_id}] Request validation failed: {str(e)}"
+
+    try:
+        if use_mock:
+            mock_response = json.dumps(expected_directives)
+            with patch("app.llm_interpreter.call_llm", return_value=mock_response):
+                response = await process_scenario(request)
+        else:
+            response = await process_scenario(request)
+    except Exception as e:
+        return False, f"[{case_id}] Pipeline execution failed: {str(e)}"
+
+    # 1. Validate directive interpretation semantics
+    actual_directives = [
+        d.model_dump() if hasattr(d, "model_dump") else d
+        for d in response.directive_interpretation
+    ]
+    if len(actual_directives) != len(expected_directives):
+        return (
+            False,
+            f"[{case_id}] Interpretation count mismatch: expected {len(expected_directives)}, got {len(actual_directives)}\n"
+            f"Expected: {json.dumps(expected_directives, indent=2)}\n"
+            f"Actual: {json.dumps(actual_directives, indent=2)}",
+        )
+
+    for i, (act, exp) in enumerate(zip(actual_directives, expected_directives)):
+        if act["directive_type"] != exp["directive_type"]:
+            return (
+                False,
+                f"[{case_id}] Note {i} directive_type mismatch: expected {exp['directive_type']}, got {act['directive_type']}",
+            )
+        if act["applies"] != exp["applies"]:
+            return (
+                False,
+                f"[{case_id}] Note {i} applies mismatch: expected {exp['applies']}, got {act['applies']}",
+            )
+        if exp["applies"]:
+            exp_adj = exp.get("structured_adjustment", {})
+            act_adj = act.get("structured_adjustment", {})
+            if exp_adj.get("hours") != act_adj.get("hours"):
+                return (
+                    False,
+                    f"[{case_id}] Note {i} hours mismatch: expected {exp_adj.get('hours')}, got {act_adj.get('hours')}",
+                )
+
+    # 2. Independent audit of returned hourly_plan
+    plan_dicts = [
+        p.model_dump() if hasattr(p, "model_dump") else p
+        for p in response.hourly_plan
+    ]
+    try:
+        recalc_totals = validate_hourly_plan(
+            hours=request.hours,
+            battery=request.battery,
+            directives=actual_directives,
+            hourly_plan=plan_dicts,
+        )
+    except Exception as e:
+        return False, f"[{case_id}] Independent plan validation rejected schedule: {str(e)}"
+
+    # 3. Verify recalculated totals match response
+    if abs(recalc_totals["total_grid_kwh"] - response.total_grid_kwh) > 0.01:
+        return False, f"[{case_id}] Total grid mismatch between plan and response"
+    if abs(recalc_totals["total_cost_bdt"] - response.total_cost_bdt) > 0.01:
+        return False, f"[{case_id}] Total cost mismatch between plan and response"
+    if abs(recalc_totals["peak_grid_kwh"] - response.peak_grid_kwh) > 0.01:
+        return False, f"[{case_id}] Peak grid mismatch between plan and response"
+
+    # 4. Compare optimal cost against official reference
+    if "total_cost_bdt" in expected_output:
+        exp_cost = float(expected_output["total_cost_bdt"])
+        act_cost = float(response.total_cost_bdt)
+        diff = abs(exp_cost - act_cost)
+        if diff > 0.01:
+            return (
+                False,
+                f"[{case_id}] Cost difference {diff:.2f} BDT exceeds tolerance (Expected: {exp_cost:.2f}, Actual: {act_cost:.2f})",
+            )
+
+    return True, f"{case_id} PASS"
+
 
 async def main():
-    json_path = os.path.join(os.path.dirname(__file__), "..", "public_cases.json")
-    if not os.path.exists(json_path):
-        print(f"Error: {json_path} not found")
-        sys.exit(1)
-        
-    with open(json_path, 'r') as f:
-        cases = json.load(f)
-        
-    print(f"Loaded {len(cases)} public cases")
-    
-    # Check if GEMINI_API_KEY is set, if not mock the response for demonstration
-    use_mock = not os.environ.get("GEMINI_API_KEY")
+    parser = argparse.ArgumentParser(description="GridWise Public Sample Case Runner")
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Force mock LLM mode even if API key is configured",
+    )
+    args = parser.parse_args()
+
+    cases = load_official_cases()
+    print(f"Loaded {len(cases)} official public sample cases.")
+
+    has_key = bool(settings.LLM_API_KEY)
+    use_mock = args.mock or not has_key
+
     if use_mock:
-        print("GEMINI_API_KEY not set. Using mock mode for demonstration.")
-        from unittest.mock import patch
-        
+        mode_str = "MOCK mode (verifying full optimizer + validator + schema pipeline)"
+    else:
+        mode_str = f"LIVE mode using model '{settings.LLM_MODEL}'"
+    print(f"Running in {mode_str}...\n")
+
+    passed = 0
+    total = len(cases)
+    failures = []
+
     for case in cases:
-        print(f"\n--- Running case {case['scenario_id']} ---")
-        operator_notes = case.get("operator_notes", [])
-        battery = case.get("battery", {})
-        hours = case.get("hours", [])
-        
-        try:
-            if use_mock:
-                # Mock a successful response matching expected
-                mock_response = json.dumps(case.get("expected_directives", []))
-                with patch("app.llm_interpreter.call_llm", return_value=mock_response):
-                    interpretations = await interpret_operator_notes(operator_notes, battery, hours)
-            else:
-                interpretations = await interpret_operator_notes(operator_notes, battery, hours)
-                
-            print("Interpretations:")
-            print(json.dumps(interpretations, indent=2))
-            
-            # Here we would normally plug into the optimizer/validator, but that's Dev 1/2's job.
-            # We just print the valid interpretations.
-        except Exception as e:
-            print(f"Error in {case['scenario_id']}: {str(e)}")
+        case_id = case.get("id", case.get("input", {}).get("scenario_id", "UNKNOWN"))
+        success, message = await run_single_case(case, use_mock=use_mock)
+        if success:
+            passed += 1
+            print(f"{case_id} PASS")
+        else:
+            print(f"{case_id} FAIL")
+            failures.append(message)
+
+    print(f"\nPassed {passed}/{total}\n")
+
+    if failures:
+        print("Failure Details:")
+        for f in failures:
+            print("-" * 50)
+            print(f)
+        sys.exit(1)
+    else:
+        print("All public cases passed successfully.")
+        sys.exit(0)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

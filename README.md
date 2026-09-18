@@ -1,120 +1,216 @@
-# GridWise
-**BUP CSE Fest 2026**
+# GridWise — Smart Campus Energy Optimization Service
+**BUP CSE Fest 2026 · Online Preliminary**
 
-## Challenge Overview
-GridWise is a robust energy scheduling platform. It combines language-based operator notes, strict deterministic guardrails, and a mathematical optimizer to produce a 24-hour battery and grid utilization plan that is valid, safe, and optimally cost-effective.
-
-## Architecture
-The application flow processes requests in stages:
-1. **Request** → Validated against API schemas
-2. **LLM Interpreter** → Converts unstructured operator notes to proposed JSON directives
-3. **Deterministic Guardrails** → Strict bounds and schema checking on LLM output
-4. **Directive Application** → Converts schedule intents to optimization bounds
-5. **Mathematical Optimizer** → Solves for the cheapest 24-hour schedule
-6. **Final Validator** → Independently verifies the result
-7. **Response** → Returns the total cost and full energy schedule
-
-### LLM Role & Provider
-- **Provider**: Google GenAI (Gemini 2.5 Flash)
-- **Role**: Converting operator notes into standardized objects using provider structured output capabilities.
-- **Limitations**: The LLM is restricted strictly to interpretation. It cannot invent values, cannot modify the energy schedule directly, and is actively prevented from producing unsupported directives by the guardrails.
-
-### Guardrails
-Strict guardrails run deterministically after the LLM:
-- Reject any missing/duplicate indices or notes
-- Reject unexpected directive types
-- Check bounds (e.g. fraction factor `0..1`, reserve <= battery capacity)
-- Validate temporal rules (hours `0..23`, unique, sorted)
-- Allows **1-time recovery retry** if the first LLM generation fails the check.
-
-### Supported Directives
-- `solar_reduction`
-- `minimum_battery_reserve`
-- `no_charge_window`
-- `no_discharge_window`
-- `max_grid_window`
-- `no_op`
-
-### Optimizer/Solver
-A mathematical optimizer takes the guardrail-validated schedule directives and produces a cost-minimal 24-hour schedule honoring physical battery limitations, time-of-use tariffs, and solar generation.
+GridWise is an enterprise-grade, high-performance energy scheduling HTTP service. It combines language-based operator notes interpretation via a constrained Large Language Model (LLM), deterministic validation guardrails, and a Mixed-Integer Linear Programming (MILP) mathematical optimizer to produce a cost-minimal 24-hour dispatch schedule that strictly satisfies electrical energy balances, physical battery constraints, time-of-use tariffs, and operational directives.
 
 ---
 
-## Environment Variables
-- `GEMINI_API_KEY`: Required for LLM integration. (Ensure this is not logged or committed)
+## 1. System Architecture
 
-## Installation & Running Locally
+```
+FastAPI HTTP Request (POST /optimize-energy)
+      ↓
+[1] Request & Schema Validation (Pydantic v2)
+      ↓
+[2] LLM Operator-Note Interpreter (Google GenAI Gemini 3.6 Flash)
+      ↓
+[3] Deterministic Guardrails (Strict bounds & canonical normalization)
+      ↓
+[4] Directive Application (Mathematical constraint derivation)
+      ↓
+[5] Mathematical Optimizer (PuLP + CBC MILP Solver)
+      ↓
+[6] Independent Hourly-Plan Validator (Replays physics & recalculates totals)
+      ↓
+[7] Deterministic Plan Summary & Canonical JSON Response
+```
 
-1. Create virtual environment and install dependencies:
+### Pipeline Responsibilities:
+1. **LLM Interpreter**: Handles natural-language understanding. Maps 1–3 operator notes into structured directive candidates adhering strictly to JSON schema.
+   - **What it does**: Parses temporal phrases (e.g., "noon to 2 PM"), reduction fractions, reserve thresholds, and grid caps.
+   - **What it does NOT do**: It does NOT compute dispatch numbers, does NOT calculate costs or totals, does NOT modify tariffs or load profiles, and does NOT invent unstated rules.
+2. **Deterministic Guardrails**: Authoritative validation layer before optimization. Rejects unsupported directive types, ensures exact sequence mapping, verifies numeric bounds, strictly rejects booleans for numeric fields, and enforces start-inclusive/end-exclusive hours.
+3. **Mathematical Optimizer**: Solves the 24-hour MILP cost minimization objective:
+   $$\min \sum_{h=0}^{23} \text{grid}[h] \times \text{tariff}[h]$$
+   Honors hourly energy balance, effective solar limits, active reserves, charge/discharge rates, window bans, grid caps, and mandatory end-of-day battery neutrality ($\text{energy}[23] = \text{initial}$).
+4. **Independent Final Validator**: Replays the entire 24-hour plan from scratch independently of the solver. Audits non-negativity, rates, bounds, balance, and directives, then recalculates `total_grid_kwh`, `total_cost_bdt`, and `peak_grid_kwh`.
+
+---
+
+## 2. Supported Directives
+
+GridWise supports exactly six canonical directive types:
+- `solar_reduction`: Usable PV output reduced to a fraction (e.g., `factor=0.20` for an 80% reduction).
+- `minimum_battery_reserve`: Elevates minimum battery energy during designated hours (e.g., `minimum_energy_kwh=100.0`).
+- `no_charge_window`: Prohibits battery charging during listed hours (`charge=0`).
+- `no_discharge_window`: Prohibits battery discharging during listed hours (`discharge=0`).
+- `max_grid_window`: Imposes a ceiling on grid power draw (`grid <= max_grid_kwh`).
+- `no_op`: Irrelevant note (cafeteria, sports, seminars) marked with `applies=false` and `structured_adjustment=null`.
+
+---
+
+## 3. Environment Configuration
+
+All settings are unified and managed through `app/config.py`:
+
+| Variable Name | Required | Default | Description |
+|---|---|---|---|
+| `LLM_API_KEY` | Optional / Recommended | `""` | Primary API key for Google GenAI provider (aliases `GEMINI_API_KEY`) |
+| `LLM_MODEL` | Optional | `gemini-3.6-flash` | LLM model identifier |
+| `LLM_BASE_URL` | Optional | `""` | Custom provider base URL if using a proxy |
+| `LLM_TIMEOUT_SECONDS` | Optional | `60.0` | Timeout threshold for provider calls |
+| `PORT` | Optional | `8000` | HTTP service port |
+| `LOG_LEVEL` | Optional | `INFO` | Application logging level |
+
+---
+
+## 4. Local Installation & Setup
+
+### Prerequisites
+- Python 3.10+
+- Virtual environment tool (`venv`)
+
+### Setup Instructions
 ```bash
+# 1. Clone repository and navigate to workspace root
+cd C:\Users\Rushan\Desktop\OS
+
+# 2. Create and activate a clean virtual environment
 python -m venv venv
-source venv/bin/activate  # Or venv\Scripts\activate on Windows
+# On Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+# On Linux/macOS:
+# source venv/bin/activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
+
+# 4. Configure environment credentials
+cp .env.example .env
+# Edit .env and supply your LLM_API_KEY
 ```
 
-2. Export the LLM API key:
-```bash
-export GEMINI_API_KEY="your-api-key"
-```
+---
 
-3. **Exact local run command** *(Awaiting final merge verification)*:
+## 5. Running the Service
+
+Start the FastAPI application with Uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+The service becomes ready in less than 2 seconds.
 
-## Testing Commands
+---
 
-**Unit Tests**:
+## 6. API Endpoints & Verification
+
+### 1. Health Check (`GET /health`)
 ```bash
-python -m pytest tests/
+curl -X GET http://localhost:8000/health
+```
+**Response (HTTP 200)**:
+```json
+{
+  "status": "ok"
+}
 ```
 
-**Live LLM Integration Test Command** *(Requires API Key)*:
+### 2. Energy Optimization (`POST /optimize-energy`)
 ```bash
-export GEMINI_API_KEY="your-api-key"
-python -m pytest tests/test_public_cases.py
+curl -X POST http://localhost:8000/optimize-energy \
+  -H "Content-Type: application/json" \
+  -d '{
+    "scenario_id": "DEMO-01",
+    "operator_notes": [
+      "Facilities will wash the rooftop solar panels from noon until 2 PM. Usable solar should be treated as 25% of forecast.",
+      "The sports office moved next month registration deadline."
+    ],
+    "hours": [
+      {"hour": 0, "demand_kwh": 90, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
+      {"hour": 1, "demand_kwh": 85, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
+      {"hour": 2, "demand_kwh": 80, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
+      {"hour": 3, "demand_kwh": 80, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
+      {"hour": 4, "demand_kwh": 85, "solar_kwh": 0, "tariff_bdt_per_kwh": 5},
+      {"hour": 5, "demand_kwh": 95, "solar_kwh": 0, "tariff_bdt_per_kwh": 6},
+      {"hour": 6, "demand_kwh": 110, "solar_kwh": 5, "tariff_bdt_per_kwh": 8},
+      {"hour": 7, "demand_kwh": 130, "solar_kwh": 20, "tariff_bdt_per_kwh": 10},
+      {"hour": 8, "demand_kwh": 150, "solar_kwh": 50, "tariff_bdt_per_kwh": 12},
+      {"hour": 9, "demand_kwh": 165, "solar_kwh": 90, "tariff_bdt_per_kwh": 14},
+      {"hour": 10, "demand_kwh": 175, "solar_kwh": 130, "tariff_bdt_per_kwh": 16},
+      {"hour": 11, "demand_kwh": 180, "solar_kwh": 160, "tariff_bdt_per_kwh": 16},
+      {"hour": 12, "demand_kwh": 185, "solar_kwh": 180, "tariff_bdt_per_kwh": 15},
+      {"hour": 13, "demand_kwh": 180, "solar_kwh": 170, "tariff_bdt_per_kwh": 14},
+      {"hour": 14, "demand_kwh": 170, "solar_kwh": 140, "tariff_bdt_per_kwh": 13},
+      {"hour": 15, "demand_kwh": 165, "solar_kwh": 90, "tariff_bdt_per_kwh": 14},
+      {"hour": 16, "demand_kwh": 170, "solar_kwh": 45, "tariff_bdt_per_kwh": 18},
+      {"hour": 17, "demand_kwh": 185, "solar_kwh": 10, "tariff_bdt_per_kwh": 22},
+      {"hour": 18, "demand_kwh": 205, "solar_kwh": 0, "tariff_bdt_per_kwh": 28},
+      {"hour": 19, "demand_kwh": 215, "solar_kwh": 0, "tariff_bdt_per_kwh": 30},
+      {"hour": 20, "demand_kwh": 205, "solar_kwh": 0, "tariff_bdt_per_kwh": 26},
+      {"hour": 21, "demand_kwh": 175, "solar_kwh": 0, "tariff_bdt_per_kwh": 18},
+      {"hour": 22, "demand_kwh": 135, "solar_kwh": 0, "tariff_bdt_per_kwh": 10},
+      {"hour": 23, "demand_kwh": 105, "solar_kwh": 0, "tariff_bdt_per_kwh": 7}
+    ],
+    "battery": {
+      "capacity_kwh": 200,
+      "initial_energy_kwh": 100,
+      "minimum_energy_kwh": 20,
+      "max_charge_kwh_per_hour": 50,
+      "max_discharge_kwh_per_hour": 50
+    }
+  }'
 ```
 
-**Public Sample Test Command** *(Standalone runner)*:
+---
+
+## 7. Testing Suites & Verification
+
+### 1. Run Complete Test Suite
+```bash
+python -m pytest -q
+```
+
+### 2. Run Official 10 Public Sample Cases
+Executes all 10 official cases through the end-to-end pipeline and validates optimal costs:
 ```bash
 python scripts/test_public_cases.py
 ```
+*(Add `--mock` to verify offline without live LLM quota consumption).*
 
-## Docker
+### 3. Live LLM Integration Tests
+```bash
+python -m pytest tests/test_public_cases.py
+```
 
-**Build**:
+---
+
+## 8. Docker Deployment
+
+### Build Container Image
 ```bash
 docker build -t gridwise-app .
 ```
 
-**Run**:
+### Run Container Service
 ```bash
-docker run -p 8000:8000 -e GEMINI_API_KEY="your-key" gridwise-app
+docker run -d -p 8000:8000 -e LLM_API_KEY="your-api-key" --name gridwise gridwise-app
 ```
 
-**Health Test** *(Awaiting merge verification)*:
-```bash
-curl http://localhost:8000/health
-```
-
-## Example API Requests *(Awaiting final merge)*
-
-**GET /health**:
+### Container Health Probe
 ```bash
 curl http://localhost:8000/health
 ```
 
-**POST /optimize-energy**:
-```bash
-curl -X POST http://localhost:8000/optimize-energy \
-  -H "Content-Type: application/json" \
-  -d '{ "scenario_id": "...", "operator_notes": ["..."], "hours": [...], "battery": {...} }'
-```
+---
 
-## Dependencies & Security
-- **Dependencies**: `google-genai`, `pytest`, `pytest-asyncio`, `fastapi`, `uvicorn` (See `requirements.txt`)
-- **Security**: Strict prevention of secret logging. SDK exceptions and guardrail failures are safely abstracted as 422 HTTP responses. No internal traces are exposed.
+## 9. Security & Secret Handling
+- **No Credentials Committed**: `.env` and credential files are strictly excluded via `.gitignore` and `.dockerignore`.
+- **Zero Leakage**: FastAPI global exception handlers sanitize unhandled errors into controlled HTTP 500 responses with zero tracebacks or authorization header leaks.
+- **Controlled Error Codes**: Known domain exceptions (`REQUEST_VALIDATION_ERROR`, `GUARDRAIL_VALIDATION_ERROR`, `OPTIMIZATION_ERROR`, `PLAN_VALIDATION_ERROR`, `PROVIDER_ERROR`) return structured messages without exposing internal stack traces.
 
-## Known Limitations
-- The interpreter LLM requires internet access to reach the provider APIs.
-- The 1-time recovery adds latency on adversarial inputs, but guarantees deterministic bounds safely.
+---
+
+## 10. Known Limitations
+- **External Provider Dependency**: Live interpretation requires outbound internet connectivity to Google GenAI endpoints.
+- **Round-Trip Battery Efficiency**: Modeled at 100% per official preliminary competition specification.
+- **Grid Export**: Solar curtailment is enforced; grid feed-in/export is non-negative ($grid \ge 0$).

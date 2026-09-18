@@ -36,10 +36,7 @@ from app.math_utils import (
     active_minimum_reserve,
     effective_solar_array,
 )
-
-
-class PlanValidationError(Exception):
-    """Raised when the hourly plan violates any constraint."""
+from app.exceptions import PlanValidationError
 
 
 # ---------------------------------------------------------------------------

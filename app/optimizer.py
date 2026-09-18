@@ -20,11 +20,11 @@ import math
 import pulp
 
 from app.directives import apply_directives
+from app.exceptions import OptimizationError
 from app.math_utils import clamp_near_zero, NUMERIC_TOLERANCE
 
-
-class OptimizerError(Exception):
-    """Raised when the MILP solver cannot find a feasible/optimal solution."""
+# Alias for backward compatibility
+OptimizerError = OptimizationError
 
 
 def optimize_energy(
@@ -167,7 +167,7 @@ def optimize_energy(
     prob += energy_after[23] == initial, "end_of_day_neutrality"
 
     # ---- Solve -------------------------------------------------------
-    solver = pulp.COIN_CMD(msg=0)  # silent
+    solver = pulp.PULP_CBC_CMD(msg=False)  # silent
     status = prob.solve(solver)
 
     if pulp.LpStatus[status] != "Optimal":
