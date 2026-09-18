@@ -1,7 +1,23 @@
 # GridWise — Smart Campus Energy Optimization Service
-**BUP CSE Fest 2026 · Online Preliminary**
+**BUP CSE Fest 2026 · Hackathon Submission**
 
-GridWise is an enterprise-grade, high-performance energy scheduling HTTP service. It combines language-based operator notes interpretation via a constrained Large Language Model (LLM), deterministic validation guardrails, and a Mixed-Integer Linear Programming (MILP) mathematical optimizer to produce a cost-minimal 24-hour dispatch schedule that strictly satisfies electrical energy balances, physical battery constraints, time-of-use tariffs, and operational directives.
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/Rushu41/BUP_HACKATHON)
+[![Railway Deployment](https://img.shields.io/badge/Railway-Production%20Live-success?logo=railway)](https://buphackathon-production-ad62.up.railway.app)
+[![API Documentation](https://img.shields.io/badge/Swagger%20UI-Interactive%20Docs-informational?logo=swagger)](https://buphackathon-production-ad62.up.railway.app/docs)
+
+GridWise is an enterprise-grade, high-performance energy scheduling HTTP service. It combines natural language operator notes interpretation via a constrained Large Language Model (LLM), deterministic validation guardrails, and a Mixed-Integer Linear Programming (MILP) mathematical optimizer to produce a cost-minimal 24-hour dispatch schedule that strictly satisfies electrical energy balances, physical battery constraints, time-of-use tariffs, and operational directives.
+
+---
+
+## 🌐 Production Deployed Service (Railway)
+
+The backend service is fully deployed and accessible in the cloud:
+
+* **Base URL**: `https://buphackathon-production-ad62.up.railway.app`
+* **Interactive API Docs (Swagger UI)**: [https://buphackathon-production-ad62.up.railway.app/docs](https://buphackathon-production-ad62.up.railway.app/docs)
+* **OpenAPI Schema**: `https://buphackathon-production-ad62.up.railway.app/openapi.json`
+* **Health Check Endpoint**: `GET https://buphackathon-production-ad62.up.railway.app/health`
+* **Optimization Endpoint**: `POST https://buphackathon-production-ad62.up.railway.app/optimize-energy`
 
 ---
 
@@ -12,7 +28,7 @@ FastAPI HTTP Request (POST /optimize-energy)
       ↓
 [1] Request & Schema Validation (Pydantic v2)
       ↓
-[2] LLM Operator-Note Interpreter (Google GenAI Gemini 3.6 Flash)
+[2] LLM Operator-Note Interpreter (Google GenAI Gemini)
       ↓
 [3] Deterministic Guardrails (Strict bounds & canonical normalization)
       ↓
@@ -27,7 +43,7 @@ FastAPI HTTP Request (POST /optimize-energy)
 
 ### Pipeline Responsibilities:
 1. **LLM Interpreter**: Handles natural-language understanding. Maps 1–3 operator notes into structured directive candidates adhering strictly to JSON schema.
-   - **What it does**: Parses temporal phrases (e.g., "noon to 2 PM"), reduction fractions, reserve thresholds, and grid caps.
+   - **What it does**: Parses temporal phrases (e.g., "noon to 2 PM", "between 13:00 and 15:00"), reduction fractions, reserve thresholds, and grid caps.
    - **What it does NOT do**: It does NOT compute dispatch numbers, does NOT calculate costs or totals, does NOT modify tariffs or load profiles, and does NOT invent unstated rules.
 2. **Deterministic Guardrails**: Authoritative validation layer before optimization. Rejects unsupported directive types, ensures exact sequence mapping, verifies numeric bounds, strictly rejects booleans for numeric fields, and enforces start-inclusive/end-exclusive hours.
 3. **Mathematical Optimizer**: Solves the 24-hour MILP cost minimization objective:
@@ -56,9 +72,9 @@ All settings are unified and managed through `app/config.py`:
 | Variable Name | Required | Default | Description |
 |---|---|---|---|
 | `LLM_API_KEY` | Optional / Recommended | `""` | Primary API key for Google GenAI provider (aliases `GEMINI_API_KEY`) |
-| `LLM_MODEL` | Optional | `gemini-3.6-flash` | LLM model identifier |
+| `LLM_MODEL` | Optional | `gemini-3.1-flash-lite` | LLM model identifier |
 | `LLM_BASE_URL` | Optional | `""` | Custom provider base URL if using a proxy |
-| `LLM_TIMEOUT_SECONDS` | Optional | `60.0` | Timeout threshold for provider calls |
+| `LLM_TIMEOUT_SECONDS` | Optional | `25.0` | Timeout threshold for provider calls |
 | `PORT` | Optional | `8000` | HTTP service port |
 | `LOG_LEVEL` | Optional | `INFO` | Application logging level |
 
@@ -69,19 +85,20 @@ All settings are unified and managed through `app/config.py`:
 ### Prerequisites
 - Python 3.10+
 - Virtual environment tool (`venv`)
+- CBC MILP Solver (`coinor-cbc`)
 
 ### Setup Instructions
 ```bash
 # 1. Clone repository and navigate to workspace root
-git clone <repository_url>
-cd gridwise
+git clone https://github.com/Rushu41/BUP_HACKATHON.git
+cd BUP_HACKATHON
 
 # 2. Create and activate a clean virtual environment
 python -m venv venv
 # On Windows PowerShell:
 .\venv\Scripts\Activate.ps1
 # On Linux/macOS:
-# source venv/bin/activate
+source venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -93,24 +110,17 @@ cp .env.example .env
 
 ---
 
-## 5. Running the Service
+## 5. Running the Service Locally
 
 Start the FastAPI application with Uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-The service becomes ready in less than 2 seconds.
+The service becomes ready in less than 2 seconds at `http://localhost:8000`.
 
 ---
 
 ## 6. API Endpoints & Verification
-
-### 🌐 Live Production Backend (Railway)
-- **Base URL**: `https://buphackathon-production-ad62.up.railway.app`
-- **Swagger / OpenAPI Interactive UI**: [https://buphackathon-production-ad62.up.railway.app/docs](https://buphackathon-production-ad62.up.railway.app/docs)
-- **OpenAPI Schema**: `https://buphackathon-production-ad62.up.railway.app/openapi.json`
-
----
 
 ### 1. Health Check (`GET /health`)
 ```bash
@@ -178,9 +188,9 @@ curl -X POST https://buphackathon-production-ad62.up.railway.app/optimize-energy
 
 ## 7. Testing Suites & Verification
 
-### 1. Run Complete Test Suite
+### 1. Run Complete Unit and Integration Test Suite
 ```bash
-python -m pytest -q
+python -m pytest tests/
 ```
 
 ### 2. Run Official 10 Public Sample Cases
@@ -189,24 +199,25 @@ Executes all 10 official cases through the end-to-end pipeline and validates opt
 # Offline deterministic mock verification:
 python scripts/test_public_cases.py --mock
 
-# Live local verification:
+# Live local verification (in-process):
 python scripts/test_public_cases.py
 
-# Live deployed Railway verification:
+# Live deployed Railway verification (remote):
 python scripts/test_public_cases.py --remote
 ```
 
 ### 3. Verify Deployed Live Backend Diagnostics
+Validates health probe, OpenAPI docs, HTTP 400 schema error sanitization, and end-to-end optimization:
 ```bash
 python scripts/test_live_backend.py
 ```
 
 ### 4. Stress and Scale Testing
 ```bash
-# Local in-process:
+# Local:
 python scripts/run_100_tests.py
 
-# Against live Railway backend:
+# Against live Railway backend (with rate limit pacing):
 python scripts/run_100_tests.py --remote --limit 10
 ```
 
