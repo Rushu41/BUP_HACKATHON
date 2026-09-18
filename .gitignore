@@ -1,0 +1,124 @@
+<<<<<<< HEAD
+# ==================================================
+# Environment configuration and secrets
+# ==================================================
+=======
+# Environment configuration and secrets
+>>>>>>> feature/api-core
+.env
+.env.*
+!.env.example
+
+<<<<<<< HEAD
+# ==================================================
+# Python bytecode and caches
+# ==================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# ==================================================
+# Virtual environments
+# ==================================================
+=======
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+>>>>>>> feature/api-core
+.venv/
+venv/
+ENV/
+env/
+
+<<<<<<< HEAD
+# ==================================================
+# Python build / package artifacts
+# ==================================================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ==================================================
+# Testing / coverage
+# ==================================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ==================================================
+# Type checker / linter caches
+# ==================================================
+.mypy_cache/
+.ruff_cache/
+.pyright/
+
+# ==================================================
+# IDE / editor files
+# ==================================================
+=======
+# Pytest and testing caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE configurations and local secrets
+>>>>>>> feature/api-core
+.idea/
+.vscode/
+*.swp
+*.swo
+<<<<<<< HEAD
+*.swn
+
+# ==================================================
+# Local credentials / secret files
+# ==================================================
+*credentials*.json
+*secret*.json
+*.pem
+*.key
+
+# ==================================================
+# OS-generated files
+# ==================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==================================================
+# Local development / prompt files
+# ==================================================
+=======
+*credentials*.json
+*secret*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+>>>>>>> feature/api-core
+main.txt
+p1.txt
+p2.txt
+p3.txt
+<<<<<<< HEAD
+
+# ==================================================
+# Logs / temporary files
+# ==================================================
+*.log
+*.tmp
+*.temp
+.cache/
+=======
+INTEGRATION_NOTES_API.md
+>>>>>>> feature/api-core

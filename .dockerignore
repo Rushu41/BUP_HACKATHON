@@ -1,0 +1,13 @@
+.git
+.env
+.venv
+venv
+__pycache__
+.pytest_cache
+.idea
+.vscode
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+local_secrets.txt
