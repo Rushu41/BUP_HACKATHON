@@ -1,7 +1,9 @@
 """FastAPI application entrypoint for GridWise Energy Optimization API."""
 
 import logging
+from typing import Any
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -27,14 +29,29 @@ app = FastAPI(
 )
 
 
+def _sanitize_validation_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sanitizes Pydantic error dicts to ensure nested Exception objects in ctx are JSON serializable."""
+    sanitized = []
+    for err in errors:
+        item = dict(err)
+        if "ctx" in item and isinstance(item["ctx"], dict):
+            item["ctx"] = {
+                k: str(v) if isinstance(v, Exception) else v
+                for k, v in item["ctx"].items()
+            }
+        sanitized.append(item)
+    return jsonable_encoder(sanitized)
+
+
 @app.exception_handler(RequestValidationError)
 async def handle_request_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Handles schema and input validation errors, returning controlled HTTP 400."""
-    logger.warning("Request validation failed: %s", exc.errors())
+    cleaned_errors = _sanitize_validation_errors(exc.errors())
+    logger.warning("Request validation failed: %s", cleaned_errors)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
-            "detail": exc.errors(),
+            "detail": cleaned_errors,
             "error": "REQUEST_VALIDATION_ERROR",
         },
     )

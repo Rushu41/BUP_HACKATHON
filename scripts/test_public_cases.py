@@ -20,9 +20,10 @@ WORKSPACE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if WORKSPACE_DIR not in sys.path:
     sys.path.insert(0, WORKSPACE_DIR)
 
+import httpx
 from app.config import settings
 from app.orchestrator import process_scenario
-from app.schemas import OptimizeEnergyRequest
+from app.schemas import OptimizeEnergyRequest, OptimizeEnergyResponse
 from app.validator import validate_hourly_plan
 
 
@@ -45,7 +46,11 @@ def load_official_cases() -> list[dict]:
     raise FileNotFoundError("Could not find official public sample cases JSON pack.")
 
 
-async def run_single_case(case: dict, use_mock: bool = False) -> tuple[bool, str]:
+async def run_single_case(
+    case: dict,
+    use_mock: bool = False,
+    target_url: str | None = None,
+) -> tuple[bool, str]:
     """Runs a single sample case through the end-to-end pipeline and checks validity and cost."""
     case_id = case.get("id", case.get("input", {}).get("scenario_id", "UNKNOWN"))
     case_input = case["input"] if "input" in case else case
@@ -59,15 +64,26 @@ async def run_single_case(case: dict, use_mock: bool = False) -> tuple[bool, str
     except Exception as e:
         return False, f"[{case_id}] Request validation failed: {str(e)}"
 
-    try:
-        if use_mock:
-            mock_response = json.dumps(expected_directives)
-            with patch("app.llm_interpreter.call_llm", return_value=mock_response):
+    if target_url:
+        endpoint = f"{target_url.rstrip('/')}/optimize-energy"
+        try:
+            async with httpx.AsyncClient(timeout=90.0) as client:
+                resp = await client.post(endpoint, json=case_input)
+            if resp.status_code != 200:
+                return False, f"[{case_id}] HTTP {resp.status_code} from {endpoint}: {resp.text}"
+            response = OptimizeEnergyResponse(**resp.json())
+        except Exception as e:
+            return False, f"[{case_id}] Network / execution error against {endpoint}: {str(e)}"
+    else:
+        try:
+            if use_mock:
+                mock_response = json.dumps(expected_directives)
+                with patch("app.llm_interpreter.call_llm", return_value=mock_response):
+                    response = await process_scenario(request)
+            else:
                 response = await process_scenario(request)
-        else:
-            response = await process_scenario(request)
-    except Exception as e:
-        return False, f"[{case_id}] Pipeline execution failed: {str(e)}"
+        except Exception as e:
+            return False, f"[{case_id}] Pipeline execution failed: {str(e)}"
 
     # 1. Validate directive interpretation semantics
     actual_directives = [
@@ -139,6 +155,9 @@ async def run_single_case(case: dict, use_mock: bool = False) -> tuple[bool, str
     return True, f"{case_id} PASS"
 
 
+DEFAULT_REMOTE_URL = "https://buphackathon-production-ad62.up.railway.app"
+
+
 async def main():
     parser = argparse.ArgumentParser(description="GridWise Public Sample Case Runner")
     parser.add_argument(
@@ -146,18 +165,39 @@ async def main():
         action="store_true",
         help="Force mock LLM mode even if API key is configured",
     )
+    parser.add_argument(
+        "--url",
+        type=str,
+        default=None,
+        help=f"Target backend base URL (e.g. {DEFAULT_REMOTE_URL})",
+    )
+    parser.add_argument(
+        "--remote",
+        action="store_true",
+        help=f"Execute tests directly against deployed Railway backend ({DEFAULT_REMOTE_URL})",
+    )
     args = parser.parse_args()
+
+    target_url = None
+    if args.remote and not args.url:
+        target_url = DEFAULT_REMOTE_URL
+    elif args.url:
+        target_url = args.url
+    elif os.environ.get("BACKEND_URL"):
+        target_url = os.environ.get("BACKEND_URL")
 
     cases = load_official_cases()
     print(f"Loaded {len(cases)} official public sample cases.")
 
     has_key = bool(settings.LLM_API_KEY)
-    use_mock = args.mock or not has_key
+    use_mock = args.mock or (not has_key and not target_url)
 
-    if use_mock:
+    if target_url:
+        mode_str = f"REMOTE mode targeting backend: {target_url}"
+    elif use_mock:
         mode_str = "MOCK mode (verifying full optimizer + validator + schema pipeline)"
     else:
-        mode_str = f"LIVE mode using model '{settings.LLM_MODEL}'"
+        mode_str = f"LIVE mode using local process with model '{settings.LLM_MODEL}'"
     print(f"Running in {mode_str}...\n")
 
     passed = 0
@@ -166,7 +206,7 @@ async def main():
 
     for case in cases:
         case_id = case.get("id", case.get("input", {}).get("scenario_id", "UNKNOWN"))
-        success, message = await run_single_case(case, use_mock=use_mock)
+        success, message = await run_single_case(case, use_mock=use_mock, target_url=target_url)
         if success:
             passed += 1
             print(f"{case_id} PASS")

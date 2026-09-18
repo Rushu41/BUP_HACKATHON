@@ -119,6 +119,25 @@ def test_optimize_energy_invalid_request_returns_400():
     )
     assert response.status_code == 400
 
+    # Invalid: 23 hours (BAD-12)
+    valid_payload = make_valid_request()
+    bad_hours_payload = dict(valid_payload)
+    bad_hours_payload["hours"] = valid_payload["hours"][:23]
+    response = client.post("/optimize-energy", json=bad_hours_payload)
+    assert response.status_code == 400
+    assert response.json()["error"] == "REQUEST_VALIDATION_ERROR"
+    assert any("exactly 24 entries" in err.get("msg", "") for err in response.json()["detail"])
+
+    # Invalid: duplicate hour (BAD-13)
+    dup_hours_payload = dict(valid_payload)
+    dup_hours = [dict(h) for h in valid_payload["hours"][:23]]
+    dup_hours.append(dict(dup_hours[-1]))  # duplicate last hour
+    dup_hours_payload["hours"] = dup_hours
+    response = client.post("/optimize-energy", json=dup_hours_payload)
+    assert response.status_code == 400
+    assert response.json()["error"] == "REQUEST_VALIDATION_ERROR"
+    assert any("duplicate hour" in err.get("msg", "") for err in response.json()["detail"])
+
 
 def test_optimize_energy_interpretation_error_handling():
     """Verify controlled error response when LLM interpreter raises InterpretationError."""

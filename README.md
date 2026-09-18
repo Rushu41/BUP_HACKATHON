@@ -104,8 +104,19 @@ The service becomes ready in less than 2 seconds.
 
 ## 6. API Endpoints & Verification
 
+### 🌐 Live Production Backend (Railway)
+- **Base URL**: `https://buphackathon-production-ad62.up.railway.app`
+- **Swagger / OpenAPI Interactive UI**: [https://buphackathon-production-ad62.up.railway.app/docs](https://buphackathon-production-ad62.up.railway.app/docs)
+- **OpenAPI Schema**: `https://buphackathon-production-ad62.up.railway.app/openapi.json`
+
+---
+
 ### 1. Health Check (`GET /health`)
 ```bash
+# Live Production
+curl -X GET https://buphackathon-production-ad62.up.railway.app/health
+
+# Local
 curl -X GET http://localhost:8000/health
 ```
 **Response (HTTP 200)**:
@@ -117,7 +128,8 @@ curl -X GET http://localhost:8000/health
 
 ### 2. Energy Optimization (`POST /optimize-energy`)
 ```bash
-curl -X POST http://localhost:8000/optimize-energy \
+# Live Production
+curl -X POST https://buphackathon-production-ad62.up.railway.app/optimize-energy \
   -H "Content-Type: application/json" \
   -d '{
     "scenario_id": "DEMO-01",
@@ -173,13 +185,28 @@ python -m pytest -q
 ### 2. Run Official 10 Public Sample Cases
 Executes all 10 official cases through the end-to-end pipeline and validates optimal costs:
 ```bash
-python scripts/test_public_cases.py
-```
-*(Add `--mock` to verify offline without live LLM quota consumption).*
+# Offline deterministic mock verification:
+python scripts/test_public_cases.py --mock
 
-### 3. Live LLM Integration Tests
+# Live local verification:
+python scripts/test_public_cases.py
+
+# Live deployed Railway verification:
+python scripts/test_public_cases.py --remote
+```
+
+### 3. Verify Deployed Live Backend Diagnostics
 ```bash
-python -m pytest tests/test_public_cases.py
+python scripts/test_live_backend.py
+```
+
+### 4. Stress and Scale Testing
+```bash
+# Local in-process:
+python scripts/run_100_tests.py
+
+# Against live Railway backend:
+python scripts/run_100_tests.py --remote --limit 10
 ```
 
 ---
