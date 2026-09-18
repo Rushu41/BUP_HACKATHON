@@ -107,11 +107,11 @@ Where:
 
 1. **Hourly Electrical Power Balance**:
    For every hour $t \in \mathcal{T}$, microgrid load demand must be met exactly:
-   $$P_{\text{demand}}[t] = P_{\text{grid}}[t] + P_{\text{solar\_used}}[t] + P_{\text{discharge}}[t] - P_{\text{charge}}[t]$$
+   $$P_{\text{demand}}[t] = P_{\text{grid}}[t] + P_{\text{solar,used}}[t] + P_{\text{discharge}}[t] - P_{\text{charge}}[t]$$
 
 2. **Solar PV Utilization & Curtailment**:
    Usable solar power cannot exceed the adjusted forecast:
-   $$0 \le P_{\text{solar\_used}}[t] \le P_{\text{solar}}[t] \times \alpha[t]$$
+   $$0 \le P_{\text{solar,used}}[t] \le P_{\text{solar}}[t] \times \alpha[t]$$
    Where $\alpha[t] \in [0.0, 1.0]$ represents the effective solar factor derived from directives (defaulting to $1.0$).
 
 3. **Battery Energy Storage Dynamics**:
@@ -123,14 +123,14 @@ Where:
 
 4. **Charge and Discharge Mutual Exclusion**:
    To prevent non-physical simultaneous charging and discharging within the same time interval:
-   $$0 \le P_{\text{charge}}[t] \le R_{\text{charge\_max}} \times u_{\text{charge}}[t]$$
-   $$0 \le P_{\text{discharge}}[t] \le R_{\text{discharge\_max}} \times u_{\text{discharge}}[t]$$
+   $$0 \le P_{\text{charge}}[t] \le R_{\text{charge}}^{\max} \times u_{\text{charge}}[t]$$
+   $$0 \le P_{\text{discharge}}[t] \le R_{\text{discharge}}^{\max} \times u_{\text{discharge}}[t]$$
    $$u_{\text{charge}}[t] + u_{\text{discharge}}[t] \le 1, \quad u_{\text{charge}}[t], u_{\text{discharge}}[t] \in \{0, 1\}$$
 
 5. **Battery State of Charge Bounds**:
    For each hour $t \in \mathcal{T}$:
    $$E_{\min}[t] \le E_{\text{battery}}[t] \le E_{\text{capacity}}$$
-   Where $E_{\min}[t] = \max(E_{\text{battery\_base\_min}}, E_{\text{directive\_reserve}}[t])$.
+   Where $E_{\min}[t] = \max(E_{\text{base,min}}, E_{\text{reserve}}[t])$.
 
 6. **End-of-Day Neutrality Condition**:
    At the conclusion of the 24-hour dispatch cycle ($t = 23$), the battery energy level must strictly restore to its initial baseline value within standard numerical tolerance:
@@ -144,11 +144,11 @@ GridWise strictly supports six canonical directive types:
 
 | Directive Type | Mathematical Semantic | JSON Adjustment Structure |
 |---|---|---|
-| `solar_reduction` | $P_{\text{solar\_effective}}[t] = P_{\text{solar}}[t] \times \text{factor}$ | `{"hours": [int], "factor": float}` |
+| `solar_reduction` | $P_{\text{solar,effective}}[t] = P_{\text{solar}}[t] \times \text{factor}$ | `{"hours": [int], "factor": float}` |
 | `minimum_battery_reserve` | $E_{\text{battery}}[t] \ge \max(E_{\min}, E_{\text{reserve}})$ | `{"hours": [int], "minimum_energy_kwh": float}` |
 | `no_charge_window` | $P_{\text{charge}}[t] = 0 \quad (\text{action} \neq \text{"charge"})$ | `{"hours": [int]}` |
 | `no_discharge_window` | $P_{\text{discharge}}[t] = 0 \quad (\text{action} \neq \text{"discharge"})$ | `{"hours": [int]}` |
-| `max_grid_window` | $P_{\text{grid}}[t] \le P_{\text{grid\_cap}}$ | `{"hours": [int], "max_grid_kwh": float}` |
+| `max_grid_window` | $P_{\text{grid}}[t] \le P_{\text{grid}}^{\max}$ | `{"hours": [int], "max_grid_kwh": float}` |
 | `no_op` | Irrelevant operational note; no mathematical impact | `null` (`applies: false`) |
 
 *All temporal windows follow 0-indexed, start-inclusive, end-exclusive representations (e.g., "1 PM to 3 PM" corresponds strictly to hours `[13, 14]`).*
