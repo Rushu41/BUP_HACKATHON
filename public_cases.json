@@ -1,0 +1,41 @@
+[
+  {
+    "scenario_id": "SAMPLE-01",
+    "operator_notes": [
+      "Solar falls to 20% from 1 PM to 3 PM.",
+      "Keep at least 90 kWh."
+    ],
+    "hours": [
+      {"hour": 0, "demand_kwh": 50, "solar_kwh": 0, "tariff_bdt_per_kwh": 5.0}
+    ],
+    "battery": {
+      "capacity_kwh": 200,
+      "initial_energy_kwh": 100,
+      "minimum_energy_kwh": 20,
+      "max_charge_kwh_per_hour": 50,
+      "max_discharge_kwh_per_hour": 50
+    },
+    "expected_directives": [
+      {
+        "note_index": 0,
+        "applies": true,
+        "directive_type": "solar_reduction",
+        "structured_adjustment": {
+          "hours": [13, 14],
+          "factor": 0.2
+        },
+        "explanation": "..."
+      },
+      {
+        "note_index": 1,
+        "applies": true,
+        "directive_type": "minimum_battery_reserve",
+        "structured_adjustment": {
+          "hours": [],
+          "minimum_energy_kwh": 90
+        },
+        "explanation": "..."
+      }
+    ]
+  }
+]
